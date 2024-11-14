@@ -47,9 +47,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 质量滑块事件
     qualitySlider.addEventListener('input', (e) => {
-        qualityValue.textContent = e.target.value + '%';
+        const quality = e.target.value / 100;
+        qualityValue.textContent = `${Math.round(quality * 100)}%`;
         if (currentFile) {
-            compressImage(currentFile, e.target.value / 100);
+            // 添加防抖，避免频繁压缩
+            clearTimeout(window.compressionTimeout);
+            window.compressionTimeout = setTimeout(() => {
+                compressImage(currentFile, quality);
+            }, 300);
         }
     });
 
@@ -74,25 +79,57 @@ document.addEventListener('DOMContentLoaded', function() {
         reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
+                // 创建canvas
                 const canvas = document.createElement('canvas');
-                canvas.width = img.width;
-                canvas.height = img.height;
                 
+                // 计算压缩后的尺寸
+                let width = img.width;
+                let height = img.height;
+                
+                // 如果图片尺寸过大，按比例缩小
+                const MAX_WIDTH = 1920;
+                const MAX_HEIGHT = 1080;
+                
+                if (width > MAX_WIDTH) {
+                    height = Math.round((height * MAX_WIDTH) / width);
+                    width = MAX_WIDTH;
+                }
+                if (height > MAX_HEIGHT) {
+                    width = Math.round((width * MAX_HEIGHT) / height);
+                    height = MAX_HEIGHT;
+                }
+                
+                // 设置canvas尺寸
+                canvas.width = width;
+                canvas.height = height;
+                
+                // 获取context并设置图像平滑
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
                 
-                canvas.toBlob((blob) => {
-                    compressedImage.src = URL.createObjectURL(blob);
-                    compressedSize.textContent = formatFileSize(blob.size);
-                    
-                    // 更新下载按钮
-                    downloadBtn.onclick = () => {
-                        const link = document.createElement('a');
-                        link.href = URL.createObjectURL(blob);
-                        link.download = 'compressed_' + file.name;
-                        link.click();
-                    };
-                }, file.type, quality);
+                // 绘制图像
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // 转换为blob，使用指定的质量
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            compressedImage.src = URL.createObjectURL(blob);
+                            compressedSize.textContent = formatFileSize(blob.size);
+                            
+                            // 更新下载按钮
+                            downloadBtn.onclick = () => {
+                                const link = document.createElement('a');
+                                link.href = URL.createObjectURL(blob);
+                                link.download = `compressed_${quality*100}%_${file.name}`;
+                                link.click();
+                            };
+                        }
+                    },
+                    file.type,
+                    quality
+                );
             };
             img.src = e.target.result;
         };
